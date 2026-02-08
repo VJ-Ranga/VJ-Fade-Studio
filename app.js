@@ -490,11 +490,11 @@ function paintBrushAt(layer, canvasX, canvasY) {
   const mx = localX * mask.width;
   const my = localY * mask.height;
 
-  const radiusCanvas = layer.fade.brushSize || 90;
+  const radiusCanvas = layer.fade.brushSize || DEFAULT_BRUSH_SIZE;
   const radius = Math.max(2, (radiusCanvas / Math.max(layer.width, 1)) * mask.width);
   const softness = Math.max(0.05, Math.min(layer.fade.softness / 100, 1));
   const inner = radius * (1 - softness * 0.9);
-  const strength = Math.max(0.01, Math.min((layer.fade.brushStrength || 50) / 100, 1));
+  const strength = Math.max(0.01, Math.min((layer.fade.brushStrength || DEFAULT_BRUSH_STRENGTH) / 100, 1));
   const shape = layer.fade.brushShape || "round";
 
   if (shape === "square") {
@@ -681,7 +681,7 @@ function updateActiveImageScale(percent) {
   if (!active) return;
   const cx = active.x + active.width / 2;
   const cy = active.y + active.height / 2;
-  const scale = Math.max(0.05, percent / 100);
+  const scale = Math.max(0.1, Math.min(MAX_IMAGE_SCALE, percent / 100));
   active.scale = scale;
   active.width = active.naturalW * scale;
   active.height = active.naturalH * scale;
@@ -922,7 +922,7 @@ function drawBrushPreview() {
   if (!active || active.fade.type !== "brush") return;
   if (!state.pointer.inside || state.pointer.shift) return;
 
-  const size = active.fade.brushSize || 90;
+  const size = active.fade.brushSize || DEFAULT_BRUSH_SIZE;
   const radius = size / 2;
   ctx.save();
   ctx.strokeStyle = "rgba(226,125,57,0.95)";
