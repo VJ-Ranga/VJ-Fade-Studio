@@ -84,6 +84,7 @@ const state = {
     bgColor: "#ffffff",
   },
   images: [],
+  imageCache: new Map(),
   activeImageId: null,
   drag: {
     active: false,
@@ -93,6 +94,7 @@ const state = {
     offsetY: 0,
     lastBrushX: 0,
     lastBrushY: 0,
+    changed: false,
   },
   pointer: {
     x: 0,
@@ -101,6 +103,12 @@ const state = {
     shift: false,
   },
   renderPending: false,
+  history: {
+    stack: [],
+    index: -1,
+    max: 60,
+    applying: false,
+  },
 };
 
 function requestRender() {
@@ -144,6 +152,153 @@ function getActiveImage() {
   return state.images.find((img) => img.id === state.activeImageId) || null;
 }
 
+function cloneFade(fade) {
+  return {
+    type: fade.type,
+    direction: fade.direction,
+    mode: fade.mode,
+    color: fade.color,
+    size: fade.size,
+    softness: fade.softness,
+    brushSize: fade.brushSize,
+    brushStrength: fade.brushStrength,
+    brushShape: fade.brushShape,
+  };
+}
+
+function layerToSnapshot(layer) {
+  return {
+    id: layer.id,
+    name: layer.name,
+    src: layer.src,
+    naturalW: layer.naturalW,
+    naturalH: layer.naturalH,
+    scale: layer.scale,
+    width: layer.width,
+    height: layer.height,
+    x: layer.x,
+    y: layer.y,
+    fade: cloneFade(layer.fade),
+    brushMask: layer.brushMask ? layer.brushMask.toDataURL("image/png") : null,
+  };
+}
+
+function snapshotToString() {
+  const payload = {
+    canvas: {
+      width: state.canvas.width,
+      height: state.canvas.height,
+      transparent: state.canvas.transparent,
+      bgColor: state.canvas.bgColor,
+    },
+    activeImageId: state.activeImageId,
+    images: state.images.map(layerToSnapshot),
+  };
+  return JSON.stringify(payload);
+}
+
+function restoreFromSnapshot(snapshotString) {
+  const data = JSON.parse(snapshotString);
+  state.history.applying = true;
+
+  state.canvas.width = data.canvas.width;
+  state.canvas.height = data.canvas.height;
+  state.canvas.transparent = data.canvas.transparent;
+  state.canvas.bgColor = data.canvas.bgColor;
+  canvas.width = data.canvas.width;
+  canvas.height = data.canvas.height;
+  controls.canvasWidth.value = data.canvas.width;
+  controls.canvasHeight.value = data.canvas.height;
+  controls.canvasInfo.textContent = `${data.canvas.width} × ${data.canvas.height}`;
+  controls.transparentBg.checked = state.canvas.transparent;
+  controls.bgColor.value = state.canvas.bgColor;
+  controls.bgColorHex.value = state.canvas.bgColor;
+
+  state.images = data.images.map((saved) => {
+    let image = state.imageCache.get(saved.src);
+    if (!image) {
+      image = new Image();
+      image.src = saved.src;
+      state.imageCache.set(saved.src, image);
+    }
+
+    const layer = {
+      id: saved.id,
+      name: saved.name,
+      src: saved.src,
+      image,
+      naturalW: saved.naturalW,
+      naturalH: saved.naturalH,
+      scale: saved.scale,
+      width: saved.width,
+      height: saved.height,
+      x: saved.x,
+      y: saved.y,
+      fade: cloneFade(saved.fade),
+      brushMask: null,
+      tempCanvases: {},
+    };
+
+    if (saved.brushMask) {
+      const mask = document.createElement("canvas");
+      mask.width = layer.naturalW;
+      mask.height = layer.naturalH;
+      const mctx = mask.getContext("2d");
+      const maskImg = new Image();
+      maskImg.onload = () => {
+        mctx.clearRect(0, 0, mask.width, mask.height);
+        mctx.drawImage(maskImg, 0, 0, mask.width, mask.height);
+        requestRender();
+      };
+      maskImg.src = saved.brushMask;
+      layer.brushMask = mask;
+    }
+
+    return layer;
+  });
+
+  state.activeImageId = data.activeImageId;
+  if (!state.images.some((img) => img.id === state.activeImageId)) {
+    state.activeImageId = state.images.length ? state.images[state.images.length - 1].id : null;
+  }
+
+  syncImageControls();
+  renderImageList();
+  render();
+  drawRulers();
+  state.history.applying = false;
+}
+
+function pushHistory() {
+  if (state.history.applying) return;
+  const current = snapshotToString();
+  const stack = state.history.stack;
+  const currentAtIndex = stack[state.history.index];
+  if (currentAtIndex === current) return;
+
+  if (state.history.index < stack.length - 1) {
+    stack.splice(state.history.index + 1);
+  }
+
+  stack.push(current);
+  if (stack.length > state.history.max) {
+    stack.shift();
+  }
+  state.history.index = stack.length - 1;
+}
+
+function undoHistory() {
+  if (state.history.index <= 0) return;
+  state.history.index -= 1;
+  restoreFromSnapshot(state.history.stack[state.history.index]);
+}
+
+function redoHistory() {
+  if (state.history.index >= state.history.stack.length - 1) return;
+  state.history.index += 1;
+  restoreFromSnapshot(state.history.stack[state.history.index]);
+}
+
 function setCanvasSize(width, height) {
   if (!Number.isInteger(width) || !Number.isInteger(height)) return false;
   if (width < CANVAS_MIN_SIZE || height < CANVAS_MIN_SIZE) return false;
@@ -166,6 +321,7 @@ function setActiveImage(imageId) {
   syncImageControls();
   renderImageList();
   render();
+  pushHistory();
 }
 
 function updateFadeModeUI() {
@@ -366,6 +522,7 @@ async function addFiles(fileList) {
   for (const file of files) {
     try {
       const loaded = await loadFileAsImage(file);
+      state.imageCache.set(loaded.src, loaded.img);
       const layer = createImageLayer(loaded.img, loaded.src, loaded.name, state.images.length);
       state.images.push(layer);
       state.activeImageId = layer.id;
@@ -377,6 +534,7 @@ async function addFiles(fileList) {
   syncImageControls();
   renderImageList();
   render();
+  pushHistory();
 }
 
 function removeActiveImage() {
@@ -392,23 +550,41 @@ function removeActiveImage() {
   syncImageControls();
   renderImageList();
   render();
+  pushHistory();
 }
 
 function duplicateActiveImage() {
   const active = getActiveImage();
   if (!active) return;
+  let brushMask = null;
+  if (active.brushMask) {
+    brushMask = document.createElement("canvas");
+    brushMask.width = active.brushMask.width;
+    brushMask.height = active.brushMask.height;
+    brushMask.getContext("2d").drawImage(active.brushMask, 0, 0);
+  }
   const clone = {
-    ...active,
     id: uid("img"),
+    name: active.name,
+    image: active.image,
+    src: active.src,
+    naturalW: active.naturalW,
+    naturalH: active.naturalH,
+    scale: active.scale,
+    width: active.width,
+    height: active.height,
     x: active.x + 20,
     y: active.y + 20,
     fade: { ...active.fade },
+    brushMask,
+    tempCanvases: {},
   };
   state.images.push(clone);
   state.activeImageId = clone.id;
   syncImageControls();
   renderImageList();
   render();
+  pushHistory();
 }
 
 function moveActiveLayer(step) {
@@ -423,6 +599,7 @@ function moveActiveLayer(step) {
   state.images[next] = temp;
   renderImageList();
   render();
+  pushHistory();
 }
 
 function moveActiveLayerToFront() {
@@ -434,6 +611,7 @@ function moveActiveLayerToFront() {
   state.images.push(active);
   renderImageList();
   render();
+  pushHistory();
 }
 
 function moveActiveLayerToBack() {
@@ -445,6 +623,7 @@ function moveActiveLayerToBack() {
   state.images.unshift(active);
   renderImageList();
   render();
+  pushHistory();
 }
 
 function centerActiveImage() {
@@ -454,6 +633,7 @@ function centerActiveImage() {
   active.y = (state.canvas.height - active.height) / 2;
   syncImageControls();
   render();
+  pushHistory();
 }
 
 function fitActiveImageToCanvas() {
@@ -524,52 +704,66 @@ function toRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function buildMaskGradient(context, width, height, fade) {
+function buildDirectionalGradient(context, width, height, fade, asMask) {
   const fadeSize = Math.min(Math.max(fade.size / 100, 0), 1);
   const softness = Math.max(0, Math.min(fade.softness / 100, 1));
   const forwardStops = buildStops(softness, false);
   const reverseStops = buildStops(softness, true);
+  const colorAt = (alpha) => (asMask ? `rgba(0,0,0,${alpha})` : toRgba(fade.color, alpha));
 
   if (fade.type === "radial") {
     const cx = width / 2;
     const cy = height / 2;
     const radius = (Math.hypot(width, height) / 2) * fadeSize;
     const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    reverseStops.forEach((stop) => gradient.addColorStop(stop.stop, `rgba(0,0,0,${stop.alpha})`));
+    const stops = asMask ? reverseStops : forwardStops;
+    stops.forEach((stop) => gradient.addColorStop(stop.stop, colorAt(stop.alpha)));
     return gradient;
   }
 
   if (fade.direction === "right") {
     const start = width - width * fadeSize;
     const gradient = context.createLinearGradient(start, 0, width, 0);
-    reverseStops.forEach((stop) => gradient.addColorStop(stop.stop, `rgba(0,0,0,${stop.alpha})`));
+    const stops = asMask ? reverseStops : forwardStops;
+    stops.forEach((stop) => gradient.addColorStop(stop.stop, colorAt(stop.alpha)));
     return gradient;
   }
 
   if (fade.direction === "top") {
     const gradient = context.createLinearGradient(0, 0, 0, height * fadeSize);
-    forwardStops.forEach((stop) => gradient.addColorStop(stop.stop, `rgba(0,0,0,${stop.alpha})`));
+    const stops = asMask ? forwardStops : reverseStops;
+    stops.forEach((stop) => gradient.addColorStop(stop.stop, colorAt(stop.alpha)));
     return gradient;
   }
 
   if (fade.direction === "bottom") {
     const start = height - height * fadeSize;
     const gradient = context.createLinearGradient(0, start, 0, height);
-    reverseStops.forEach((stop) => gradient.addColorStop(stop.stop, `rgba(0,0,0,${stop.alpha})`));
+    const stops = asMask ? reverseStops : forwardStops;
+    stops.forEach((stop) => gradient.addColorStop(stop.stop, colorAt(stop.alpha)));
     return gradient;
   }
 
   if (fade.direction === "both-x") {
     const edge = Math.min(fadeSize, 0.5);
     const gradient = context.createLinearGradient(0, 0, width, 0);
-    gradient.addColorStop(0, "rgba(0,0,0,0)");
-    forwardStops.forEach((stop) => {
-      gradient.addColorStop(edge * stop.stop, `rgba(0,0,0,${stop.alpha})`);
-    });
-    gradient.addColorStop(1 - edge, "rgba(0,0,0,1)");
-    [...forwardStops].reverse().forEach((stop) => {
+    if (asMask) {
+      gradient.addColorStop(0, colorAt(0));
+      forwardStops.forEach((stop) => {
+        gradient.addColorStop(edge * stop.stop, colorAt(stop.alpha));
+      });
+      gradient.addColorStop(1 - edge, colorAt(1));
+    } else {
+      gradient.addColorStop(0, colorAt(1));
+      reverseStops.forEach((stop) => {
+        gradient.addColorStop(edge * stop.stop, colorAt(stop.alpha));
+      });
+      gradient.addColorStop(1 - edge, colorAt(0));
+    }
+    const backStops = asMask ? [...forwardStops].reverse() : [...reverseStops].reverse();
+    backStops.forEach((stop) => {
       const pos = 1 - edge * stop.stop;
-      gradient.addColorStop(pos, `rgba(0,0,0,${stop.alpha})`);
+      gradient.addColorStop(pos, colorAt(stop.alpha));
     });
     return gradient;
   }
@@ -577,91 +771,39 @@ function buildMaskGradient(context, width, height, fade) {
   if (fade.direction === "both-y") {
     const edge = Math.min(fadeSize, 0.5);
     const gradient = context.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, "rgba(0,0,0,0)");
-    forwardStops.forEach((stop) => {
-      gradient.addColorStop(edge * stop.stop, `rgba(0,0,0,${stop.alpha})`);
-    });
-    gradient.addColorStop(1 - edge, "rgba(0,0,0,1)");
-    [...forwardStops].reverse().forEach((stop) => {
+    if (asMask) {
+      gradient.addColorStop(0, colorAt(0));
+      forwardStops.forEach((stop) => {
+        gradient.addColorStop(edge * stop.stop, colorAt(stop.alpha));
+      });
+      gradient.addColorStop(1 - edge, colorAt(1));
+    } else {
+      gradient.addColorStop(0, colorAt(1));
+      reverseStops.forEach((stop) => {
+        gradient.addColorStop(edge * stop.stop, colorAt(stop.alpha));
+      });
+      gradient.addColorStop(1 - edge, colorAt(0));
+    }
+    const backStops = asMask ? [...forwardStops].reverse() : [...reverseStops].reverse();
+    backStops.forEach((stop) => {
       const pos = 1 - edge * stop.stop;
-      gradient.addColorStop(pos, `rgba(0,0,0,${stop.alpha})`);
+      gradient.addColorStop(pos, colorAt(stop.alpha));
     });
     return gradient;
   }
 
   const gradient = context.createLinearGradient(0, 0, width * fadeSize, 0);
-  forwardStops.forEach((stop) => gradient.addColorStop(stop.stop, `rgba(0,0,0,${stop.alpha})`));
+  const stops = asMask ? forwardStops : reverseStops;
+  stops.forEach((stop) => gradient.addColorStop(stop.stop, colorAt(stop.alpha)));
   return gradient;
 }
 
+function buildMaskGradient(context, width, height, fade) {
+  return buildDirectionalGradient(context, width, height, fade, true);
+}
+
 function buildColorGradient(context, width, height, fade) {
-  const fadeSize = Math.min(Math.max(fade.size / 100, 0), 1);
-  const softness = Math.max(0, Math.min(fade.softness / 100, 1));
-  const forwardStops = buildStops(softness, false);
-  const reverseStops = buildStops(softness, true);
-
-  if (fade.type === "radial") {
-    const cx = width / 2;
-    const cy = height / 2;
-    const radius = (Math.hypot(width, height) / 2) * fadeSize;
-    const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    forwardStops.forEach((stop) => gradient.addColorStop(stop.stop, toRgba(fade.color, stop.alpha)));
-    return gradient;
-  }
-
-  if (fade.direction === "right") {
-    const start = width - width * fadeSize;
-    const gradient = context.createLinearGradient(start, 0, width, 0);
-    forwardStops.forEach((stop) => gradient.addColorStop(stop.stop, toRgba(fade.color, stop.alpha)));
-    return gradient;
-  }
-
-  if (fade.direction === "top") {
-    const gradient = context.createLinearGradient(0, 0, 0, height * fadeSize);
-    reverseStops.forEach((stop) => gradient.addColorStop(stop.stop, toRgba(fade.color, stop.alpha)));
-    return gradient;
-  }
-
-  if (fade.direction === "bottom") {
-    const start = height - height * fadeSize;
-    const gradient = context.createLinearGradient(0, start, 0, height);
-    forwardStops.forEach((stop) => gradient.addColorStop(stop.stop, toRgba(fade.color, stop.alpha)));
-    return gradient;
-  }
-
-  if (fade.direction === "both-x") {
-    const edge = Math.min(fadeSize, 0.5);
-    const gradient = context.createLinearGradient(0, 0, width, 0);
-    gradient.addColorStop(0, toRgba(fade.color, 1));
-    reverseStops.forEach((stop) => {
-      gradient.addColorStop(edge * stop.stop, toRgba(fade.color, stop.alpha));
-    });
-    gradient.addColorStop(1 - edge, toRgba(fade.color, 0));
-    [...reverseStops].reverse().forEach((stop) => {
-      const pos = 1 - edge * stop.stop;
-      gradient.addColorStop(pos, toRgba(fade.color, stop.alpha));
-    });
-    return gradient;
-  }
-
-  if (fade.direction === "both-y") {
-    const edge = Math.min(fadeSize, 0.5);
-    const gradient = context.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, toRgba(fade.color, 1));
-    reverseStops.forEach((stop) => {
-      gradient.addColorStop(edge * stop.stop, toRgba(fade.color, stop.alpha));
-    });
-    gradient.addColorStop(1 - edge, toRgba(fade.color, 0));
-    [...reverseStops].reverse().forEach((stop) => {
-      const pos = 1 - edge * stop.stop;
-      gradient.addColorStop(pos, toRgba(fade.color, stop.alpha));
-    });
-    return gradient;
-  }
-
-  const gradient = context.createLinearGradient(0, 0, width * fadeSize, 0);
-  reverseStops.forEach((stop) => gradient.addColorStop(stop.stop, toRgba(fade.color, stop.alpha)));
-  return gradient;
+  return buildDirectionalGradient(context, width, height, fade, false);
 }
 
 function drawLayer(targetCtx, layer) {
@@ -1008,25 +1150,29 @@ function downloadImage(type) {
 controls.applyCanvas.addEventListener("click", () => {
   const width = parseInt(controls.canvasWidth.value, 10);
   const height = parseInt(controls.canvasHeight.value, 10);
-  if (!Number.isNaN(width) && !Number.isNaN(height)) setCanvasSize(width, height);
+  if (!Number.isNaN(width) && !Number.isNaN(height) && setCanvasSize(width, height)) {
+    pushHistory();
+  }
 });
 
 controls.presetButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const [w, h] = button.dataset.preset.split("x").map(Number);
-    setCanvasSize(w, h);
+    if (setCanvasSize(w, h)) pushHistory();
   });
 });
 
 controls.transparentBg.addEventListener("change", (event) => {
   state.canvas.transparent = event.target.checked;
   render();
+  pushHistory();
 });
 
 controls.bgColor.addEventListener("input", (event) => {
   state.canvas.bgColor = event.target.value;
   controls.bgColorHex.value = state.canvas.bgColor;
   render();
+  pushHistory();
 });
 
 controls.bgColorHex.addEventListener("change", (event) => {
@@ -1039,6 +1185,7 @@ controls.bgColorHex.addEventListener("change", (event) => {
   controls.bgColor.value = hex;
   controls.bgColorHex.value = hex;
   render();
+  pushHistory();
 });
 
 controls.imageInput.addEventListener("change", async (event) => {
@@ -1063,6 +1210,7 @@ controls.imageX.addEventListener("change", () => {
   const nextX = parseInt(controls.imageX.value, 10);
   if (Number.isNaN(nextX)) return;
   updateActiveImagePosition(nextX, active.y);
+  pushHistory();
 });
 
 controls.imageY.addEventListener("change", () => {
@@ -1071,18 +1219,21 @@ controls.imageY.addEventListener("change", () => {
   const nextY = parseInt(controls.imageY.value, 10);
   if (Number.isNaN(nextY)) return;
   updateActiveImagePosition(active.x, nextY);
+  pushHistory();
 });
 
 controls.imageWidth.addEventListener("change", () => {
   const value = parseInt(controls.imageWidth.value, 10);
   if (Number.isNaN(value)) return;
   updateActiveImageSize({ width: value });
+  pushHistory();
 });
 
 controls.imageHeight.addEventListener("change", () => {
   const value = parseInt(controls.imageHeight.value, 10);
   if (Number.isNaN(value)) return;
   updateActiveImageSize({ height: value });
+  pushHistory();
 });
 
 controls.imageScale.addEventListener("input", () => {
@@ -1091,12 +1242,17 @@ controls.imageScale.addEventListener("input", () => {
   updateActiveImageScale(value);
 });
 
+controls.imageScale.addEventListener("change", () => {
+  pushHistory();
+});
+
 controls.fadeType.addEventListener("change", (event) => {
   const active = getActiveImage();
   if (!active) return;
   active.fade.type = event.target.value;
   updateFadeModeUI();
   render();
+  pushHistory();
 });
 
 controls.fadeDirection.addEventListener("change", (event) => {
@@ -1104,6 +1260,7 @@ controls.fadeDirection.addEventListener("change", (event) => {
   if (!active) return;
   active.fade.direction = event.target.value;
   render();
+  pushHistory();
 });
 
 controls.fadeTransparent.addEventListener("change", () => {
@@ -1112,6 +1269,7 @@ controls.fadeTransparent.addEventListener("change", () => {
   active.fade.mode = controls.fadeTransparent.checked ? "transparent" : "color";
   updateFadeModeUI();
   render();
+  pushHistory();
 });
 
 controls.fadeColor.addEventListener("input", (event) => {
@@ -1120,6 +1278,7 @@ controls.fadeColor.addEventListener("input", (event) => {
   active.fade.color = event.target.value;
   controls.fadeColorHex.value = active.fade.color;
   render();
+  pushHistory();
 });
 
 controls.fadeColorHex.addEventListener("change", (event) => {
@@ -1134,6 +1293,7 @@ controls.fadeColorHex.addEventListener("change", (event) => {
   controls.fadeColor.value = hex;
   controls.fadeColorHex.value = hex;
   render();
+  pushHistory();
 });
 
 controls.fadeSize.addEventListener("input", (event) => {
@@ -1141,6 +1301,7 @@ controls.fadeSize.addEventListener("input", (event) => {
   if (!active) return;
   active.fade.size = parseInt(event.target.value, 10);
   render();
+  pushHistory();
 });
 
 controls.fadeSoftness.addEventListener("input", (event) => {
@@ -1148,18 +1309,29 @@ controls.fadeSoftness.addEventListener("input", (event) => {
   if (!active) return;
   active.fade.softness = parseInt(event.target.value, 10);
   render();
+  pushHistory();
 });
 
 controls.brushSize.addEventListener("input", (event) => {
   const active = getActiveImage();
   if (!active) return;
   active.fade.brushSize = parseInt(event.target.value, 10);
+  requestRender();
+});
+
+controls.brushSize.addEventListener("change", () => {
+  pushHistory();
 });
 
 controls.brushStrength.addEventListener("input", (event) => {
   const active = getActiveImage();
   if (!active) return;
   active.fade.brushStrength = parseInt(event.target.value, 10);
+  requestRender();
+});
+
+controls.brushStrength.addEventListener("change", () => {
+  pushHistory();
 });
 
 controls.brushShape.addEventListener("change", (event) => {
@@ -1167,6 +1339,7 @@ controls.brushShape.addEventListener("change", (event) => {
   if (!active) return;
   active.fade.brushShape = event.target.value;
   render();
+  pushHistory();
 });
 
 controls.clearBrush.addEventListener("click", () => {
@@ -1174,6 +1347,7 @@ controls.clearBrush.addEventListener("click", () => {
   if (!active) return;
   clearBrushMask(active);
   render();
+  pushHistory();
 });
 
 controls.downloadPng.addEventListener("click", () => downloadImage("png"));
@@ -1225,7 +1399,9 @@ canvas.addEventListener("mousedown", (event) => {
     state.drag.mode = "brush";
     state.drag.lastBrushX = pointer.x;
     state.drag.lastBrushY = pointer.y;
+    state.drag.changed = false;
     paintBrushAt(selected, pointer.x, pointer.y);
+    state.drag.changed = true;
     canvas.style.cursor = "crosshair";
     requestRender();
     return;
@@ -1237,6 +1413,7 @@ canvas.addEventListener("mousedown", (event) => {
       state.drag.active = true;
       state.drag.mode = "resize";
       state.drag.handle = handle.name;
+      state.drag.changed = false;
       canvas.style.cursor = "nwse-resize";
       return;
     }
@@ -1251,6 +1428,7 @@ canvas.addEventListener("mousedown", (event) => {
   state.drag.mode = "move";
   state.drag.offsetX = pointer.x - hit.x;
   state.drag.offsetY = pointer.y - hit.y;
+  state.drag.changed = false;
   canvas.style.cursor = "grabbing";
 });
 
@@ -1272,6 +1450,7 @@ window.addEventListener("mousemove", (event) => {
     state.drag.lastBrushX = pointer.x;
     state.drag.lastBrushY = pointer.y;
     paintBrushAt(active, pointer.x, pointer.y);
+    state.drag.changed = true;
     requestRender();
     return;
   }
@@ -1279,6 +1458,7 @@ window.addEventListener("mousemove", (event) => {
   if (state.drag.active && state.drag.mode === "move") {
     active.x = pointer.x - state.drag.offsetX;
     active.y = pointer.y - state.drag.offsetY;
+    state.drag.changed = true;
     syncImageControls();
     requestRender();
     return;
@@ -1286,6 +1466,7 @@ window.addEventListener("mousemove", (event) => {
 
   if (state.drag.active && state.drag.mode === "resize") {
     resizeFromHandle(active, state.drag.handle, pointer.x, pointer.y);
+    state.drag.changed = true;
     syncImageControls();
     requestRender();
     return;
@@ -1342,10 +1523,27 @@ window.addEventListener("keydown", (event) => {
 
   const mod = event.ctrlKey || event.metaKey;
 
+  if (mod && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (event.shiftKey) {
+      redoHistory();
+    } else {
+      undoHistory();
+    }
+    return;
+  }
+
+  if (mod && !event.shiftKey && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    redoHistory();
+    return;
+  }
+
   if (active.fade.type === "brush" && (event.key === "e" || event.key === "E") && !mod) {
     event.preventDefault();
     controls.brushEraser.checked = !controls.brushEraser.checked;
     requestRender();
+    pushHistory();
     return;
   }
 
@@ -1361,6 +1559,7 @@ window.addEventListener("keydown", (event) => {
         controls.brushSize.value = active.fade.brushSize;
       }
       requestRender();
+      pushHistory();
       return;
     }
     if (event.key === "[") {
@@ -1374,6 +1573,7 @@ window.addEventListener("keydown", (event) => {
         controls.brushSize.value = active.fade.brushSize;
       }
       requestRender();
+      pushHistory();
       return;
     }
   }
@@ -1429,12 +1629,14 @@ window.addEventListener("keydown", (event) => {
   if (mod && (event.key === "+" || event.key === "=")) {
     event.preventDefault();
     updateActiveImageScale(Math.round(active.scale * 100) + 5);
+    pushHistory();
     return;
   }
 
   if (mod && event.key === "-") {
     event.preventDefault();
     updateActiveImageScale(Math.round(active.scale * 100) - 5);
+    pushHistory();
     return;
   }
 
@@ -1442,24 +1644,31 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "ArrowLeft") {
     event.preventDefault();
     updateActiveImagePosition(active.x - step, active.y);
+    pushHistory();
   } else if (event.key === "ArrowRight") {
     event.preventDefault();
     updateActiveImagePosition(active.x + step, active.y);
+    pushHistory();
   } else if (event.key === "ArrowUp") {
     event.preventDefault();
     updateActiveImagePosition(active.x, active.y - step);
+    pushHistory();
   } else if (event.key === "ArrowDown") {
     event.preventDefault();
     updateActiveImagePosition(active.x, active.y + step);
+    pushHistory();
   }
 });
 
 window.addEventListener("mouseup", () => {
+  const shouldCommit = state.drag.active && state.drag.changed;
   state.drag.active = false;
   state.drag.mode = "move";
   state.drag.handle = null;
   state.drag.lastBrushX = 0;
   state.drag.lastBrushY = 0;
+  state.drag.changed = false;
+  if (shouldCommit) pushHistory();
 });
 
 controls.canvasWrap.addEventListener("dragover", (event) => {
@@ -1492,3 +1701,4 @@ controls.bgColorHex.value = controls.bgColor.value;
 syncImageControls();
 render();
 drawRulers();
+pushHistory();
