@@ -236,6 +236,32 @@ button.pill {
   display: block;
 }
 
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100;
+  background: #1c1713;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast-warn {
+  border-color: #5f3a23;
+}
+
+.toast-hide {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 .shortcut-backdrop {
   position: absolute;
   inset: 0;

@@ -53,6 +53,19 @@ const MIN_IMAGE_SIZE = 20;
 const CANVAS_MIN_SIZE = 50;
 const CANVAS_MAX_SIZE = 8000;
 const MAX_IMAGE_SCALE = 4;
+const LAYER_SCALE_SECONDARY = 0.85;
+const LAYER_OFFSET_STEP = 20;
+const LAYER_OFFSET_MAX = 120;
+const DUPLICATE_OFFSET = 20;
+const DEFAULT_FADE_SIZE = 40;
+const DEFAULT_FADE_SOFTNESS = 40;
+const DEFAULT_BRUSH_SIZE = 90;
+const DEFAULT_BRUSH_STRENGTH = 50;
+const BRUSH_SIZE_MIN = 10;
+const BRUSH_SIZE_MAX = 300;
+const BRUSH_SIZE_STEP = 8;
+const BRUSH_SOFTNESS_STEP = 5;
+const RULER_DEBOUNCE_MS = 120;
 
 function debounce(fn, wait) {
   let timeoutId;
@@ -62,16 +75,27 @@ function debounce(fn, wait) {
   };
 }
 
+function showToast(message, type = "info") {
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add("toast-hide");
+    window.setTimeout(() => toast.remove(), 220);
+  }, 2200);
+}
+
 function defaultFade() {
   return {
     type: "linear",
     direction: "left",
     mode: "transparent",
     color: "#ffffff",
-    size: 40,
-    softness: 40,
-    brushSize: 90,
-    brushStrength: 50,
+    size: DEFAULT_FADE_SIZE,
+    softness: DEFAULT_FADE_SOFTNESS,
+    brushSize: DEFAULT_BRUSH_SIZE,
+    brushStrength: DEFAULT_BRUSH_STRENGTH,
     brushShape: "round",
   };
 }
@@ -372,12 +396,12 @@ function syncImageControls() {
     controls.imageScale.value = 100;
     controls.fadeType.value = "linear";
     controls.fadeDirection.value = "left";
-    controls.fadeSize.value = 40;
-    controls.fadeSoftness.value = 40;
+    controls.fadeSize.value = DEFAULT_FADE_SIZE;
+    controls.fadeSoftness.value = DEFAULT_FADE_SOFTNESS;
     controls.fadeColor.value = "#ffffff";
     controls.fadeColorHex.value = "#ffffff";
-    controls.brushSize.value = 90;
-    controls.brushStrength.value = 50;
+    controls.brushSize.value = DEFAULT_BRUSH_SIZE;
+    controls.brushStrength.value = DEFAULT_BRUSH_STRENGTH;
     controls.brushShape.value = "round";
     controls.brushEraser.checked = false;
     updateFadeModeUI();
@@ -396,8 +420,8 @@ function syncImageControls() {
   controls.fadeSoftness.value = active.fade.softness;
   controls.fadeColor.value = active.fade.color;
   controls.fadeColorHex.value = active.fade.color;
-  controls.brushSize.value = active.fade.brushSize ?? 90;
-  controls.brushStrength.value = active.fade.brushStrength ?? 50;
+  controls.brushSize.value = active.fade.brushSize ?? DEFAULT_BRUSH_SIZE;
+  controls.brushStrength.value = active.fade.brushStrength ?? DEFAULT_BRUSH_STRENGTH;
   controls.brushShape.value = active.fade.brushShape ?? "round";
   updateFadeModeUI();
 }
@@ -406,10 +430,10 @@ function createImageLayer(image, src, name, index) {
   const naturalW = image.naturalWidth || image.width;
   const naturalH = image.naturalHeight || image.height;
   const baseScale = Math.min(state.canvas.width / naturalW, state.canvas.height / naturalH);
-  const scale = baseScale * (index === 0 ? 1 : 0.85);
+  const scale = baseScale * (index === 0 ? 1 : LAYER_SCALE_SECONDARY);
   const width = naturalW * scale;
   const height = naturalH * scale;
-  const offset = Math.min(index * 20, 120);
+  const offset = Math.min(index * LAYER_OFFSET_STEP, LAYER_OFFSET_MAX);
 
   return {
     id: uid("img"),
@@ -518,6 +542,7 @@ function loadFileAsImage(file) {
 async function addFiles(fileList) {
   const files = [...(fileList || [])].filter((file) => file.type.startsWith("image/"));
   if (!files.length) return;
+  let failedCount = 0;
 
   for (const file of files) {
     try {
@@ -526,8 +551,9 @@ async function addFiles(fileList) {
       const layer = createImageLayer(loaded.img, loaded.src, loaded.name, state.images.length);
       state.images.push(layer);
       state.activeImageId = layer.id;
-    } catch {
-      // ignore invalid file
+    } catch (error) {
+      failedCount += 1;
+      console.error(`Failed to load image: ${file.name}`, error);
     }
   }
 
@@ -535,6 +561,10 @@ async function addFiles(fileList) {
   renderImageList();
   render();
   pushHistory();
+
+  if (failedCount > 0) {
+    showToast(`Skipped ${failedCount} invalid image file(s).`, "warn");
+  }
 }
 
 function removeActiveImage() {
@@ -573,8 +603,8 @@ function duplicateActiveImage() {
     scale: active.scale,
     width: active.width,
     height: active.height,
-    x: active.x + 20,
-    y: active.y + 20,
+    x: active.x + DUPLICATE_OFFSET,
+    y: active.y + DUPLICATE_OFFSET,
     fade: { ...active.fade },
     brushMask,
     tempCanvases: {},
@@ -1550,12 +1580,12 @@ window.addEventListener("keydown", (event) => {
   if (active.fade.type === "brush") {
     if (event.key === "]") {
       event.preventDefault();
-      const amount = event.shiftKey ? 5 : 8;
+      const amount = event.shiftKey ? BRUSH_SOFTNESS_STEP : BRUSH_SIZE_STEP;
       if (event.shiftKey) {
         active.fade.softness = Math.max(0, Math.min(100, active.fade.softness + amount));
         controls.fadeSoftness.value = active.fade.softness;
       } else {
-        active.fade.brushSize = Math.max(10, Math.min(300, active.fade.brushSize + amount));
+        active.fade.brushSize = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, active.fade.brushSize + amount));
         controls.brushSize.value = active.fade.brushSize;
       }
       requestRender();
@@ -1564,12 +1594,12 @@ window.addEventListener("keydown", (event) => {
     }
     if (event.key === "[") {
       event.preventDefault();
-      const amount = event.shiftKey ? -5 : -8;
+      const amount = event.shiftKey ? -BRUSH_SOFTNESS_STEP : -BRUSH_SIZE_STEP;
       if (event.shiftKey) {
         active.fade.softness = Math.max(0, Math.min(100, active.fade.softness + amount));
         controls.fadeSoftness.value = active.fade.softness;
       } else {
-        active.fade.brushSize = Math.max(10, Math.min(300, active.fade.brushSize + amount));
+        active.fade.brushSize = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, active.fade.brushSize + amount));
         controls.brushSize.value = active.fade.brushSize;
       }
       requestRender();
@@ -1684,7 +1714,7 @@ controls.dropHint.addEventListener("click", () => {
   controls.imageInput.click();
 });
 
-const debouncedDrawRulers = debounce(drawRulers, 120);
+const debouncedDrawRulers = debounce(drawRulers, RULER_DEBOUNCE_MS);
 
 window.addEventListener("resize", debouncedDrawRulers);
 
