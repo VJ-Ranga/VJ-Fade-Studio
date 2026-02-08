@@ -1,276 +1,285 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Fade Studio</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="styles.css" />
-    <script src="vendor/jszip.min.js"></script>
-    <script src="app.js" defer></script>
-  </head>
-  <body>
-    <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <span class="app-mark">VJ</span>
-          <div>
-            <p class="eyebrow">VJ Fade Studio</p>
-            <h1>Fade Studio</h1>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description"
+    content="VJ Fade Studio - A lightweight, browser-based editor to create WooCommerce-style hero images with smooth fades. No uploads, 100% client-side." />
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23e27d39' rx='20' width='100' height='100'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='%231c120a' font-weight='bold'>VJ</text></svg>"
+    type="image/svg+xml" />
+  <title>VJ Fade Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="app.js" defer></script>
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="app-mark">VJ</span>
+        <div>
+          <p class="eyebrow">VJ Fade Studio</p>
+          <h1>Fade Studio</h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="ghost" id="openShortcuts">Shortcuts</button>
+        <button class="ghost" id="downloadPng">Download PNG</button>
+        <button class="primary" id="downloadJpg">Download JPG</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="workarea">
+        <section class="stage">
+          <div class="canvas-wrap" id="canvasWrap">
+            <canvas id="rulerTop" class="ruler ruler-top"></canvas>
+            <canvas id="rulerLeft" class="ruler ruler-left"></canvas>
+            <div class="ruler-corner" aria-hidden="true"></div>
+            <canvas id="canvas" width="1918" height="666"></canvas>
+            <button class="drop-hint" id="dropHint" type="button">
+              Drop images here or click to upload
+            </button>
           </div>
-        </div>
-        <div class="topbar-actions">
-          <button class="ghost" id="openShortcuts">Shortcuts</button>
-          <button class="ghost" id="downloadPng">Download PNG</button>
-          <button class="primary" id="downloadJpg">Download JPG</button>
-        </div>
-      </header>
-
-      <main class="workspace">
-        <section class="workarea">
-          <section class="stage">
-            <div class="canvas-wrap" id="canvasWrap">
-              <canvas id="rulerTop" class="ruler ruler-top"></canvas>
-              <canvas id="rulerLeft" class="ruler ruler-left"></canvas>
-              <div class="ruler-corner" aria-hidden="true"></div>
-              <canvas id="canvas" width="1918" height="666"></canvas>
-              <button class="drop-hint" id="dropHint" type="button">
-                Drop images here or click to upload
-              </button>
+          <div class="stage-meta">
+            <div>
+              <strong>Tip:</strong> Drag the image on the canvas to position it.
             </div>
-            <div class="stage-meta">
-              <div>
-                <strong>Tip:</strong> Drag the image on the canvas to position it.
-              </div>
-              <div id="canvasInfo">1918 × 666</div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-top">
-              <label class="filename-field" for="exportName">
-                File name
-                <input type="text" id="exportName" value="vj-fade-image" maxlength="80" />
-              </label>
-            </div>
-            <div class="panel-tabs">
-              <button class="tool active" data-target="section-canvas" aria-label="Canvas">
-                <span>Canvas</span>
-              </button>
-              <button class="tool" data-target="section-image" aria-label="Image">
-                <span>Image</span>
-              </button>
-              <button class="tool" data-target="section-fade" aria-label="Fade">
-                <span>Fade</span>
-              </button>
-            </div>
-
-            <div class="panel-group" id="section-canvas">
-              <h2>Canvas</h2>
-              <div class="grid-row">
-                <label>
-                  Width
-                  <input type="number" id="canvasWidth" min="50" value="1918" />
-                </label>
-                <label>
-                  Height
-                  <input type="number" id="canvasHeight" min="50" value="666" />
-                </label>
-              </div>
-              <div class="row canvas-actions">
-                <button class="ghost" id="applyCanvas">Apply size</button>
-                <div class="pill-group">
-                  <button class="pill" data-preset="1918x666">1918×666</button>
-                  <button class="pill" data-preset="1080x1080">1080×1080</button>
-                  <button class="pill" data-preset="1080x1350">1080×1350</button>
-                  <button class="pill" data-preset="1080x1920">1080×1920</button>
-                  <button class="pill" data-preset="1200x628">1200×628</button>
-                  <button class="pill" data-preset="1920x1080">1920×1080</button>
-                </div>
-              </div>
-              <div class="grid-row">
-                <label class="toggle">
-                  <input type="checkbox" id="transparentBg" checked />
-                  Transparent background
-                </label>
-                <label>
-                  Background
-                  <div class="color-field">
-                    <input type="color" id="bgColor" value="#ffffff" />
-                    <input type="text" id="bgColorHex" value="#ffffff" maxlength="7" />
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            <div class="panel-group" id="section-image">
-              <h2>Image</h2>
-              <label class="file">
-                <input type="file" id="imageInput" accept="image/*" multiple />
-                Upload images
-              </label>
-              <div class="image-list" id="imageList"></div>
-              <div class="row two-buttons">
-                <button class="ghost" id="fitImage">Fit to canvas</button>
-                <button class="ghost" id="centerImage">Center</button>
-              </div>
-              <div class="row">
-                <button class="ghost danger" id="removeImage">Remove selected</button>
-              </div>
-              <div class="grid-row">
-                <label>
-                  X
-                  <input type="number" id="imageX" />
-                </label>
-                <label>
-                  Y
-                  <input type="number" id="imageY" />
-                </label>
-              </div>
-              <div class="grid-row">
-                <label>
-                  Width
-                  <input type="number" id="imageWidth" />
-                </label>
-                <label>
-                  Height
-                  <input type="number" id="imageHeight" />
-                </label>
-              </div>
-              <div class="row">
-                <label class="toggle">
-                  <input type="checkbox" id="lockRatio" checked />
-                  Lock ratio
-                </label>
-              </div>
-              <label class="range">
-                Scale
-                  <input type="range" id="imageScale" min="10" max="400" value="100" />
-                </label>
-            </div>
-
-            <div class="panel-group" id="section-fade">
-              <h2>Fade</h2>
-              <div class="grid-row">
-                <label>
-                  Type
-                  <select id="fadeType">
-                    <option value="none">None</option>
-                    <option value="linear" selected>Linear</option>
-                    <option value="radial">Radial</option>
-                    <option value="brush">Brush</option>
-                  </select>
-                </label>
-                <label>
-                  Direction
-                  <select id="fadeDirection">
-                    <option value="left" selected>Left</option>
-                    <option value="right">Right</option>
-                    <option value="top">Top</option>
-                    <option value="bottom">Bottom</option>
-                    <option value="both-x">Both sides (L+R)</option>
-                    <option value="both-y">Both sides (T+B)</option>
-                  </select>
-                </label>
-              </div>
-              <div class="grid-row">
-                <label class="toggle">
-                  <input type="checkbox" id="fadeTransparent" checked />
-                  Transparent fade
-                </label>
-                <label id="fadeColorWrap">
-                  Color
-                  <div class="color-field">
-                    <input type="color" id="fadeColor" value="#ffffff" />
-                    <input type="text" id="fadeColorHex" value="#ffffff" maxlength="7" />
-                  </div>
-                </label>
-              </div>
-              <div class="grid-row">
-                <label class="range">
-                  Fade size
-                  <input type="range" id="fadeSize" min="0" max="100" value="40" />
-                </label>
-                <label class="range">
-                  Softness
-                  <input type="range" id="fadeSoftness" min="0" max="100" value="40" />
-                </label>
-              </div>
-              <div class="brush-controls" id="brushControls">
-                <div class="grid-row">
-                  <label class="range">
-                    Brush size
-                    <input type="range" id="brushSize" min="10" max="300" value="90" />
-                  </label>
-                  <label class="range">
-                    Brush strength
-                    <input type="range" id="brushStrength" min="1" max="100" value="50" />
-                  </label>
-                </div>
-                <div class="grid-row">
-                  <label>
-                    Brush shape
-                    <select id="brushShape">
-                      <option value="round" selected>Round</option>
-                      <option value="square">Square</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="row brush-bottom">
-                  <label class="toggle brush-toggle">
-                    <input type="checkbox" id="brushEraser" />
-                    Eraser
-                  </label>
-                  <button class="ghost" id="clearBrush">Clear brush</button>
-                </div>
-              </div>
-            </div>
-
-          </section>
+            <div id="canvasInfo">1918 × 666</div>
+          </div>
         </section>
-      </main>
 
-      <footer class="footer">
-        <p>Designed by vjranga.com</p>
-        <p>Copyright © 2026 VJ Fade Studio. All rights reserved.</p>
-      </footer>
+        <section class="panel">
+          <div class="panel-top">
+            <label class="filename-field" for="exportName">
+              File name
+              <input type="text" id="exportName" value="vj-fade-image" maxlength="80" />
+            </label>
+          </div>
+          <div class="panel-tabs">
+            <button class="tool active" data-target="section-canvas" aria-label="Canvas">
+              <span>Canvas</span>
+            </button>
+            <button class="tool" data-target="section-image" aria-label="Image">
+              <span>Image</span>
+            </button>
+            <button class="tool" data-target="section-fade" aria-label="Fade">
+              <span>Fade</span>
+            </button>
+          </div>
 
-      <div class="shortcut-modal" id="shortcutModal" aria-hidden="true">
-        <div class="shortcut-backdrop" id="closeShortcuts"></div>
-        <div class="shortcut-card" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-          <div class="shortcut-header">
-            <h2>Keyboard Shortcuts</h2>
-            <button class="ghost" id="closeShortcutsBtn">Close</button>
+          <div class="panel-group" id="section-canvas">
+            <h2>Canvas</h2>
+            <div class="grid-row">
+              <label>
+                Width
+                <input type="number" id="canvasWidth" min="50" value="1918" />
+              </label>
+              <label>
+                Height
+                <input type="number" id="canvasHeight" min="50" value="666" />
+              </label>
+            </div>
+            <div class="row canvas-actions">
+              <button class="ghost" id="applyCanvas">Apply size</button>
+              <div class="pill-group">
+                <button class="pill" data-preset="1918x666">1918×666</button>
+                <button class="pill" data-preset="1080x1080">1080×1080</button>
+                <button class="pill" data-preset="1080x1350">1080×1350</button>
+                <button class="pill" data-preset="1080x1920">1080×1920</button>
+                <button class="pill" data-preset="1200x628">1200×628</button>
+                <button class="pill" data-preset="1920x1080">1920×1080</button>
+              </div>
+            </div>
+            <div class="grid-row">
+              <label class="toggle">
+                <input type="checkbox" id="transparentBg" checked />
+                Transparent background
+              </label>
+              <label>
+                Background
+                <div class="color-field">
+                  <input type="color" id="bgColor" value="#ffffff" aria-label="Background color picker" />
+                  <input type="text" id="bgColorHex" value="#ffffff" maxlength="7"
+                    aria-label="Background color hex value" />
+                </div>
+              </label>
+            </div>
           </div>
-          <div class="shortcut-list">
-            <p><kbd>Delete</kbd> Remove selected image</p>
-            <p><kbd>Ctrl/Cmd + Z</kbd> Undo</p>
-            <p><kbd>Ctrl/Cmd + Shift + Z</kbd> Redo</p>
-            <p><kbd>Ctrl/Cmd + D</kbd> Duplicate selected image</p>
-            <p><kbd>Ctrl/Cmd + ]</kbd> Bring forward</p>
-            <p><kbd>Ctrl/Cmd + Shift + ]</kbd> Bring to front</p>
-            <p><kbd>Ctrl/Cmd + [</kbd> Send backward</p>
-            <p><kbd>Ctrl/Cmd + Shift + [</kbd> Send to back</p>
-            <p><kbd>Ctrl/Cmd + 0</kbd> Fit selected image to canvas</p>
-            <p><kbd>Ctrl/Cmd + +</kbd> Scale up selected image</p>
-            <p><kbd>Ctrl/Cmd + -</kbd> Scale down selected image</p>
-            <p><kbd>?</kbd> Open/close shortcuts</p>
-            <p><kbd>Arrow Keys</kbd> Nudge 1px</p>
-            <p><kbd>Shift + Arrow</kbd> Nudge 10px</p>
-            <p><kbd>E</kbd> Toggle brush eraser</p>
-            <p><kbd>[</kbd> Brush size down</p>
-            <p><kbd>]</kbd> Brush size up</p>
-            <p><kbd>Shift + [</kbd> Brush softness down</p>
-            <p><kbd>Shift + ]</kbd> Brush softness up</p>
-            <p><kbd>Shift + Drag</kbd> Move image in Brush mode</p>
+
+          <div class="panel-group" id="section-image">
+            <h2>Image</h2>
+            <label class="file">
+              <input type="file" id="imageInput" accept="image/*" multiple />
+              Upload images
+            </label>
+            <div class="image-list" id="imageList"></div>
+            <div class="row two-buttons">
+              <button class="ghost" id="fitImage">Fit to canvas</button>
+              <button class="ghost" id="centerImage">Center</button>
+            </div>
+            <div class="row">
+              <button class="ghost danger" id="removeImage">Remove selected</button>
+            </div>
+            <div class="grid-row">
+              <label>
+                X
+                <input type="number" id="imageX" />
+              </label>
+              <label>
+                Y
+                <input type="number" id="imageY" />
+              </label>
+            </div>
+            <div class="grid-row">
+              <label>
+                Width
+                <input type="number" id="imageWidth" />
+              </label>
+              <label>
+                Height
+                <input type="number" id="imageHeight" />
+              </label>
+            </div>
+            <div class="row">
+              <label class="toggle">
+                <input type="checkbox" id="lockRatio" checked />
+                Lock ratio
+              </label>
+            </div>
+            <label class="range">
+              Scale
+              <input type="range" id="imageScale" min="10" max="400" value="100" />
+            </label>
           </div>
+
+          <div class="panel-group" id="section-fade">
+            <h2>Fade</h2>
+            <div class="grid-row">
+              <label>
+                Type
+                <select id="fadeType">
+                  <option value="none">None</option>
+                  <option value="linear" selected>Linear</option>
+                  <option value="radial">Radial</option>
+                  <option value="brush">Brush</option>
+                </select>
+              </label>
+              <label>
+                Direction
+                <select id="fadeDirection">
+                  <option value="left" selected>Left</option>
+                  <option value="right">Right</option>
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="both-x">Both sides (L+R)</option>
+                  <option value="both-y">Both sides (T+B)</option>
+                </select>
+              </label>
+            </div>
+            <div class="grid-row">
+              <label class="toggle">
+                <input type="checkbox" id="fadeTransparent" checked />
+                Transparent fade
+              </label>
+              <label id="fadeColorWrap">
+                Color
+                <div class="color-field">
+                  <input type="color" id="fadeColor" value="#ffffff" aria-label="Fade color picker" />
+                  <input type="text" id="fadeColorHex" value="#ffffff" maxlength="7"
+                    aria-label="Fade color hex value" />
+                </div>
+              </label>
+            </div>
+            <div class="grid-row">
+              <label class="range">
+                Fade size
+                <input type="range" id="fadeSize" min="0" max="100" value="40" />
+              </label>
+              <label class="range">
+                Softness
+                <input type="range" id="fadeSoftness" min="0" max="100" value="40" />
+              </label>
+            </div>
+            <div class="brush-controls" id="brushControls">
+              <div class="grid-row">
+                <label class="range">
+                  Brush size
+                  <input type="range" id="brushSize" min="10" max="300" value="90" />
+                </label>
+                <label class="range">
+                  Brush strength
+                  <input type="range" id="brushStrength" min="1" max="100" value="50" />
+                </label>
+              </div>
+              <div class="grid-row">
+                <label>
+                  Brush shape
+                  <select id="brushShape">
+                    <option value="round" selected>Round</option>
+                    <option value="square">Square</option>
+                  </select>
+                </label>
+              </div>
+              <div class="row brush-bottom">
+                <label class="toggle brush-toggle">
+                  <input type="checkbox" id="brushEraser" />
+                  Eraser
+                </label>
+                <button class="ghost" id="clearBrush">Clear brush</button>
+              </div>
+            </div>
+          </div>
+
+        </section>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Designed by vjranga.com</p>
+      <p>Copyright © <span id="copyrightYear">2026</span> VJ Fade Studio. All rights reserved.</p>
+    </footer>
+    <div id="ariaLive" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="shortcut-modal" id="shortcutModal" aria-hidden="true">
+      <div class="shortcut-backdrop" id="closeShortcuts"></div>
+      <div class="shortcut-card" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcut-header">
+          <h2>Keyboard Shortcuts</h2>
+          <button class="ghost" id="closeShortcutsBtn">Close</button>
+        </div>
+        <div class="shortcut-list">
+          <p><kbd>Delete</kbd> Remove selected image</p>
+          <p><kbd>Ctrl/Cmd + Z</kbd> Undo</p>
+          <p><kbd>Ctrl/Cmd + Shift + Z</kbd> Redo</p>
+          <p><kbd>Ctrl/Cmd + D</kbd> Duplicate selected image</p>
+          <p><kbd>Ctrl/Cmd + ]</kbd> Bring forward</p>
+          <p><kbd>Ctrl/Cmd + Shift + ]</kbd> Bring to front</p>
+          <p><kbd>Ctrl/Cmd + [</kbd> Send backward</p>
+          <p><kbd>Ctrl/Cmd + Shift + [</kbd> Send to back</p>
+          <p><kbd>Ctrl/Cmd + 0</kbd> Fit selected image to canvas</p>
+          <p><kbd>Ctrl/Cmd + +</kbd> Scale up selected image</p>
+          <p><kbd>Ctrl/Cmd + -</kbd> Scale down selected image</p>
+          <p><kbd>?</kbd> Open/close shortcuts</p>
+          <p><kbd>Arrow Keys</kbd> Nudge 1px</p>
+          <p><kbd>Shift + Arrow</kbd> Nudge 10px</p>
+          <p><kbd>E</kbd> Toggle brush eraser</p>
+          <p><kbd>[</kbd> Brush size down</p>
+          <p><kbd>]</kbd> Brush size up</p>
+          <p><kbd>Shift + [</kbd> Brush softness down</p>
+          <p><kbd>Shift + ]</kbd> Brush softness up</p>
+          <p><kbd>Shift + Drag</kbd> Move image in Brush mode</p>
         </div>
       </div>
     </div>
-  </body>
+  </div>
+</body>
+
 </html>

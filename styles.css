@@ -438,7 +438,7 @@ kbd {
   margin-bottom: 12px;
 }
 
-.panel-group > :last-child {
+.panel-group> :last-child {
   margin-bottom: 0;
 }
 
@@ -783,6 +783,7 @@ label select:focus {
   animation: fadeIn 0.5s ease;
   position: relative;
   z-index: 1;
+  touch-action: none;
 }
 
 .drop-hint {
@@ -826,6 +827,7 @@ label select:focus {
     opacity: 0;
     transform: translateY(6px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -837,9 +839,71 @@ label select:focus {
     transform: translateY(12px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+/* Accessibility: visually hidden for screen readers */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus styles for pill buttons */
+button.pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.ghost:focus-visible,
+button.primary:focus-visible,
+.tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Firefox range track styling */
+.range input::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-dark) 100%);
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+
+  button,
+  input,
+  select {
+    border: 1px solid CanvasText;
+  }
+
+  .image-item.active,
+  .tool.active {
+    outline: 2px solid Highlight;
   }
 }
 

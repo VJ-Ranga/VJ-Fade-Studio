@@ -27,6 +27,8 @@ I built this for fun because I needed to create many banner and hero visuals for
 ## Keyboard Shortcuts
 
 - `Delete` / `Backspace` - remove selected image
+- `Ctrl/Cmd + Z` - undo
+- `Ctrl/Cmd + Shift + Z` - redo
 - `Ctrl/Cmd + D` - duplicate selected image
 - `Ctrl/Cmd + ]` - bring forward
 - `Ctrl/Cmd + Shift + ]` - bring to front
@@ -58,7 +60,6 @@ No build setup is required.
 - `index.html` - app layout and UI
 - `styles.css` - design system and responsive styling
 - `app.js` - canvas engine, layer editing, fades, brush, shortcuts, export
-- `vendor/jszip.min.js` - local dependency file bundled for offline use
 
 ## Notes
 

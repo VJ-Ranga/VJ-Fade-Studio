@@ -1,3 +1,5 @@
+"use strict";
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -46,6 +48,8 @@ const controls = {
   shortcutModal: document.getElementById("shortcutModal"),
   closeShortcuts: document.getElementById("closeShortcuts"),
   closeShortcutsBtn: document.getElementById("closeShortcutsBtn"),
+  ariaLive: document.getElementById("ariaLive"),
+  copyrightYear: document.getElementById("copyrightYear"),
 };
 
 const HANDLE_SIZE = 12;
@@ -84,6 +88,15 @@ function showToast(message, type = "info") {
     toast.classList.add("toast-hide");
     window.setTimeout(() => toast.remove(), 220);
   }, 2200);
+}
+
+function announce(message) {
+  if (controls.ariaLive) {
+    controls.ariaLive.textContent = message;
+    window.setTimeout(() => {
+      controls.ariaLive.textContent = "";
+    }, 1000);
+  }
 }
 
 function defaultFade() {
@@ -543,10 +556,17 @@ async function addFiles(fileList) {
   const files = [...(fileList || [])].filter((file) => file.type.startsWith("image/"));
   if (!files.length) return;
   let failedCount = 0;
+  let oversizedCount = 0;
 
   for (const file of files) {
     try {
       const loaded = await loadFileAsImage(file);
+      // Validate image dimensions to prevent memory issues
+      if (loaded.img.naturalWidth > CANVAS_MAX_SIZE || loaded.img.naturalHeight > CANVAS_MAX_SIZE) {
+        oversizedCount += 1;
+        console.warn(`Image too large: ${file.name} (${loaded.img.naturalWidth}x${loaded.img.naturalHeight})`);
+        continue;
+      }
       state.imageCache.set(loaded.src, loaded.img);
       const layer = createImageLayer(loaded.img, loaded.src, loaded.name, state.images.length);
       state.images.push(layer);
@@ -565,6 +585,9 @@ async function addFiles(fileList) {
   if (failedCount > 0) {
     showToast(`Skipped ${failedCount} invalid image file(s).`, "warn");
   }
+  if (oversizedCount > 0) {
+    showToast(`Skipped ${oversizedCount} oversized image(s). Max: ${CANVAS_MAX_SIZE}x${CANVAS_MAX_SIZE}px`, "warn");
+  }
 }
 
 function removeActiveImage() {
@@ -572,6 +595,13 @@ function removeActiveImage() {
   if (index === -1) return;
   const layer = state.images[index];
   if (layer) {
+    // Clean up image cache to prevent memory leaks
+    if (layer.src && state.imageCache.has(layer.src)) {
+      const srcUsedByOthers = state.images.some((img, i) => i !== index && img.src === layer.src);
+      if (!srcUsedByOthers) {
+        state.imageCache.delete(layer.src);
+      }
+    }
     layer.brushMask = null;
     layer.tempCanvases = null;
   }
@@ -581,6 +611,7 @@ function removeActiveImage() {
   renderImageList();
   render();
   pushHistory();
+  announce("Image removed");
 }
 
 function duplicateActiveImage() {
@@ -1169,12 +1200,18 @@ function renderForExport(type) {
 }
 
 function downloadImage(type) {
-  const out = renderForExport(type);
-  const url = out.toDataURL(type === "png" ? "image/png" : "image/jpeg", 0.92);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${getExportBaseName()}.${type}`;
-  link.click();
+  try {
+    const out = renderForExport(type);
+    const url = out.toDataURL(type === "png" ? "image/png" : "image/jpeg", 0.92);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${getExportBaseName()}.${type}`;
+    link.click();
+    announce(`Image exported as ${type.toUpperCase()}`);
+  } catch (error) {
+    console.error("Export failed:", error);
+    showToast("Export failed. The canvas may contain external images.", "warn");
+  }
 }
 
 controls.applyCanvas.addEventListener("click", () => {
@@ -1620,12 +1657,6 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (mod && event.key.toLowerCase() === "j") {
-    event.preventDefault();
-    duplicateActiveImage();
-    return;
-  }
-
   if (mod && event.shiftKey && event.key === "]") {
     event.preventDefault();
     moveActiveLayerToFront();
@@ -1698,6 +1729,7 @@ window.addEventListener("mouseup", () => {
   state.drag.lastBrushX = 0;
   state.drag.lastBrushY = 0;
   state.drag.changed = false;
+  canvas.style.cursor = "default";
   if (shouldCommit) pushHistory();
 });
 
@@ -1732,3 +1764,126 @@ syncImageControls();
 render();
 drawRulers();
 pushHistory();
+
+// Set dynamic copyright year
+if (controls.copyrightYear) {
+  controls.copyrightYear.textContent = new Date().getFullYear();
+}
+
+// Touch event support for mobile devices
+function getTouchPointer(event) {
+  const touch = event.touches[0] || event.changedTouches[0];
+  if (!touch) return null;
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((touch.clientX - rect.left) * canvas.width) / rect.width,
+    y: ((touch.clientY - rect.top) * canvas.height) / rect.height,
+  };
+}
+
+canvas.addEventListener("touchstart", (event) => {
+  const pointer = getTouchPointer(event);
+  if (!pointer) return;
+  event.preventDefault();
+  state.pointer.x = pointer.x;
+  state.pointer.y = pointer.y;
+  state.pointer.inside = true;
+
+  const active = getActiveImage();
+
+  if (active && active.fade.type === "brush") {
+    const hit = hitTestTopLayer(pointer.x, pointer.y);
+    if (!hit) return;
+    bringToFront(hit);
+    setActiveImage(hit.id);
+    const selected = getActiveImage();
+    if (!selected || selected.fade.type !== "brush") return;
+    state.drag.active = true;
+    state.drag.mode = "brush";
+    state.drag.lastBrushX = pointer.x;
+    state.drag.lastBrushY = pointer.y;
+    state.drag.changed = false;
+    paintBrushAt(selected, pointer.x, pointer.y);
+    state.drag.changed = true;
+    requestRender();
+    return;
+  }
+
+  if (active) {
+    const handle = getHandleAtPoint(active, pointer.x, pointer.y);
+    if (handle) {
+      state.drag.active = true;
+      state.drag.mode = "resize";
+      state.drag.handle = handle.name;
+      state.drag.changed = false;
+      return;
+    }
+  }
+
+  const hit = hitTestTopLayer(pointer.x, pointer.y);
+  if (!hit) return;
+
+  bringToFront(hit);
+  setActiveImage(hit.id);
+  state.drag.active = true;
+  state.drag.mode = "move";
+  state.drag.offsetX = pointer.x - hit.x;
+  state.drag.offsetY = pointer.y - hit.y;
+  state.drag.changed = false;
+}, { passive: false });
+
+canvas.addEventListener("touchmove", (event) => {
+  const pointer = getTouchPointer(event);
+  if (!pointer) return;
+  event.preventDefault();
+  state.pointer.x = pointer.x;
+  state.pointer.y = pointer.y;
+
+  const active = getActiveImage();
+  if (!active) return;
+
+  if (state.drag.active && state.drag.mode === "brush") {
+    const dx = pointer.x - state.drag.lastBrushX;
+    const dy = pointer.y - state.drag.lastBrushY;
+    if (dx * dx + dy * dy < 1) {
+      requestRender();
+      return;
+    }
+    state.drag.lastBrushX = pointer.x;
+    state.drag.lastBrushY = pointer.y;
+    paintBrushAt(active, pointer.x, pointer.y);
+    state.drag.changed = true;
+    requestRender();
+    return;
+  }
+
+  if (state.drag.active && state.drag.mode === "move") {
+    active.x = pointer.x - state.drag.offsetX;
+    active.y = pointer.y - state.drag.offsetY;
+    state.drag.changed = true;
+    syncImageControls();
+    requestRender();
+    return;
+  }
+
+  if (state.drag.active && state.drag.mode === "resize") {
+    resizeFromHandle(active, state.drag.handle, pointer.x, pointer.y);
+    state.drag.changed = true;
+    syncImageControls();
+    requestRender();
+  }
+}, { passive: false });
+
+canvas.addEventListener("touchend", () => {
+  const shouldCommit = state.drag.active && state.drag.changed;
+  state.drag.active = false;
+  state.drag.mode = "move";
+  state.drag.handle = null;
+  state.drag.lastBrushX = 0;
+  state.drag.lastBrushY = 0;
+  state.drag.changed = false;
+  state.pointer.inside = false;
+  if (shouldCommit) pushHistory();
+  requestRender();
+});
+
