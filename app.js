@@ -1189,7 +1189,7 @@ controls.bgColorHex.addEventListener("change", (event) => {
 });
 
 controls.imageInput.addEventListener("change", async (event) => {
-  const files = event.target.files;
+  const files = Array.from(event.target.files || []);
   event.target.value = "";
   await addFiles(files);
 });
