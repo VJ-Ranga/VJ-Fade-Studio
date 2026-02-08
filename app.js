@@ -50,6 +50,17 @@ const controls = {
 
 const HANDLE_SIZE = 12;
 const MIN_IMAGE_SIZE = 20;
+const CANVAS_MIN_SIZE = 50;
+const CANVAS_MAX_SIZE = 8000;
+const MAX_IMAGE_SCALE = 4;
+
+function debounce(fn, wait) {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), wait);
+  };
+}
 
 function defaultFade() {
   return {
@@ -134,6 +145,10 @@ function getActiveImage() {
 }
 
 function setCanvasSize(width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height)) return false;
+  if (width < CANVAS_MIN_SIZE || height < CANVAS_MIN_SIZE) return false;
+  if (width > CANVAS_MAX_SIZE || height > CANVAS_MAX_SIZE) return false;
+
   state.canvas.width = width;
   state.canvas.height = height;
   canvas.width = width;
@@ -143,6 +158,7 @@ function setCanvasSize(width, height) {
   controls.canvasInfo.textContent = `${width} × ${height}`;
   render();
   drawRulers();
+  return true;
 }
 
 function setActiveImage(imageId) {
@@ -253,7 +269,19 @@ function createImageLayer(image, src, name, index) {
     y: (state.canvas.height - height) / 2 + offset,
     fade: defaultFade(),
     brushMask: null,
+    tempCanvases: {},
   };
+}
+
+function getLayerTempCanvas(layer, key, width, height) {
+  if (!layer.tempCanvases) layer.tempCanvases = {};
+  if (!layer.tempCanvases[key]) layer.tempCanvases[key] = document.createElement("canvas");
+  const c = layer.tempCanvases[key];
+  if (c.width !== width || c.height !== height) {
+    c.width = width;
+    c.height = height;
+  }
+  return c;
 }
 
 function ensureBrushMask(layer) {
@@ -354,6 +382,11 @@ async function addFiles(fileList) {
 function removeActiveImage() {
   const index = state.images.findIndex((img) => img.id === state.activeImageId);
   if (index === -1) return;
+  const layer = state.images[index];
+  if (layer) {
+    layer.brushMask = null;
+    layer.tempCanvases = null;
+  }
   state.images.splice(index, 1);
   state.activeImageId = state.images.length ? state.images[state.images.length - 1].id : null;
   syncImageControls();
@@ -456,8 +489,10 @@ function updateActiveImageSize({ width, height }) {
     if (width != null) height = width / ratio;
     if (height != null && width == null) width = height * ratio;
   }
-  if (width != null) active.width = Math.max(MIN_IMAGE_SIZE, width);
-  if (height != null) active.height = Math.max(MIN_IMAGE_SIZE, height);
+  const maxWidth = state.canvas.width * MAX_IMAGE_SCALE;
+  const maxHeight = state.canvas.height * MAX_IMAGE_SCALE;
+  if (width != null) active.width = Math.max(MIN_IMAGE_SIZE, Math.min(width, maxWidth));
+  if (height != null) active.height = Math.max(MIN_IMAGE_SIZE, Math.min(height, maxHeight));
   active.scale = active.width / active.naturalW;
   syncImageControls();
   render();
@@ -631,12 +666,13 @@ function buildColorGradient(context, width, height, fade) {
 
 function drawLayer(targetCtx, layer) {
   const { image, x, y, width, height, fade } = layer;
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
   if (fade.type === "brush") {
     if (fade.mode === "transparent") {
-      const off = document.createElement("canvas");
-      off.width = Math.round(width);
-      off.height = Math.round(height);
+      const off = getLayerTempCanvas(layer, "brushTransparent", w, h);
       const octx = off.getContext("2d");
+      octx.clearRect(0, 0, off.width, off.height);
       octx.drawImage(image, 0, 0, off.width, off.height);
       if (layer.brushMask) {
         octx.globalCompositeOperation = "destination-out";
@@ -647,10 +683,9 @@ function drawLayer(targetCtx, layer) {
     } else {
       targetCtx.drawImage(image, x, y, width, height);
       if (!layer.brushMask) return;
-      const tint = document.createElement("canvas");
-      tint.width = Math.round(width);
-      tint.height = Math.round(height);
+      const tint = getLayerTempCanvas(layer, "brushColor", w, h);
       const tctx = tint.getContext("2d");
+      tctx.clearRect(0, 0, tint.width, tint.height);
       tctx.fillStyle = fade.color;
       tctx.fillRect(0, 0, tint.width, tint.height);
       tctx.globalCompositeOperation = "destination-in";
@@ -668,10 +703,9 @@ function drawLayer(targetCtx, layer) {
   }
 
   if (fadeActive && fade.mode === "transparent") {
-    const off = document.createElement("canvas");
-    off.width = Math.round(width);
-    off.height = Math.round(height);
+    const off = getLayerTempCanvas(layer, "fadeTransparent", w, h);
     const octx = off.getContext("2d");
+    octx.clearRect(0, 0, off.width, off.height);
     octx.drawImage(image, 0, 0, off.width, off.height);
     octx.globalCompositeOperation = "destination-in";
     octx.fillStyle = buildMaskGradient(octx, off.width, off.height, fade);
@@ -1008,8 +1042,9 @@ controls.bgColorHex.addEventListener("change", (event) => {
 });
 
 controls.imageInput.addEventListener("change", async (event) => {
-  await addFiles(event.target.files);
+  const files = event.target.files;
   event.target.value = "";
+  await addFiles(files);
 });
 
 controls.imageList.addEventListener("click", (event) => {
@@ -1440,12 +1475,12 @@ controls.dropHint.addEventListener("click", () => {
   controls.imageInput.click();
 });
 
-window.addEventListener("resize", () => {
-  drawRulers();
-});
+const debouncedDrawRulers = debounce(drawRulers, 120);
+
+window.addEventListener("resize", debouncedDrawRulers);
 
 if ("ResizeObserver" in window) {
-  const ro = new ResizeObserver(() => drawRulers());
+  const ro = new ResizeObserver(debouncedDrawRulers);
   ro.observe(controls.canvasWrap);
 }
 
